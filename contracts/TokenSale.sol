@@ -1,6 +1,7 @@
 pragma solidity 0.4.19;
 
 import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
+import "zeppelin-solidity/contracts/token/ERC20/ERC20Basic.sol";
 import "./custom-zeppelin-solidity/FinalizableCrowdsale.sol";
 import "./TokenMold.sol";
 import "./Whitelist.sol";
@@ -13,8 +14,19 @@ import "./Whitelist.sol";
 contract TokenSale is FinalizableCrowdsale, Pausable {
     uint256 public totalTokensForCrowdsale;
 
+    uint256 public firstPhaseEnds;
+    uint256 public secondPhaseEnds;
+
+    mapping (address => uint256) public personalPercentCapForFirstPhase;
+
+    // remainderPurchaser and remainderTokens info saved in the contract
+    // used for reference for contract owner to send refund if any to last purchaser after end of crowdsale
+    address public remainderPurchaser;
+    uint256 public remainderAmount;
+
     // external contracts
     Whitelist public whitelist;
+    ERC20Basic public icnq;
 
     event TokenRateChanged(uint256 previousRate, uint256 newRate);
 
@@ -23,7 +35,8 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
      * @param _startTime The timestamp of the beginning of the crowdsale
      * @param _endTime Timestamp when the crowdsale will finish
      * @param _whitelist contract containing the whitelisted addresses
-     * @param _token ERC20 TokenMold contract address
+     * @param _icnqToken ICNQ token contract address
+     * @param _incubatorCompanyToken ERC20 TokenMold contract address
      * @param _rate The token rate per ETH
      * @param _wallet Multisig wallet that will hold the crowdsale funds.
      * @param _totalTokensForCrowdsale Cap for the token sale
@@ -31,9 +44,12 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
     function TokenSale
         (
             uint256 _startTime,
+            uint256 _firstPhaseEnds,
+            uint256 _secondPhaseEnds,
             uint256 _endTime,
             address _whitelist,
-            address _token,
+            address _icnqToken,
+            address _incubatorCompanyToken,
             uint256 _rate,
             address _wallet,
             uint256 _totalTokensForCrowdsale
@@ -44,14 +60,18 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
     {
         require(
                 _whitelist != address(0) &&
-                _token != address(0) &&
+                _incubatorCompanyToken != address(0) &&
                 _totalTokensForCrowdsale != 0
         );
 
-        createTokenContract(_token);
+        createTokenContract(_incubatorCompanyToken);
         whitelist = Whitelist(_whitelist);
+        icnq = ERC20Basic(_icnqToken);
 
+        firstPhaseEnds = _firstPhaseEnds;
+        secondPhaseEnds = _secondPhaseEnds;
         totalTokensForCrowdsale = _totalTokensForCrowdsale;
+
         TokenMold(token).pause();
     }
 
@@ -81,13 +101,26 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
         whitelisted(beneficiary)
         payable
     {
-        require(beneficiary != address(0));
+        // should be coming from a external ethereum account. Not a contract
+        require(beneficiary != address(0) && beneficiary == tx.origin);
         require(validPurchase() && token.totalSupply() < totalTokensForCrowdsale);
 
         uint256 weiAmount = msg.value;
 
         // calculate token amount to be created
         uint256 tokens = weiAmount.mul(rate);
+
+        checkIcnqHold(beneficiary, tokens);
+
+        //remainder logic
+        if (token.totalSupply().add(tokens) > totalTokensForCrowdsale) {
+            tokens = totalTokensForCrowdsale.sub(token.totalSupply());
+            weiAmount = tokens.div(rate);
+
+            // save info so as to refund purchaser after crowdsale's end
+            remainderPurchaser = msg.sender;
+            remainderAmount = msg.value.sub(weiAmount);
+        }
 
         // update state
         weiRaised = weiRaised.add(weiAmount);
@@ -106,6 +139,25 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
         }
 
         return super.hasEnded();
+    }
+
+    /**
+     * @dev Check for Icnq hold during token pre sale phase Crowdsale contract
+     * @param beneficiary Address of investor
+     * @param tokens Tokens to receive
+     */
+    function checkIcnqHold(address beneficiary, uint256 tokens) internal {
+        if (now <= firstPhaseEnds) {
+            uint256 icnqBalance = icnq.balanceOf(beneficiary);
+            uint256 percentageOwnershipAllowance = icnqBalance.div(icnq.totalSupply());
+
+            uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(percentageOwnershipAllowance);
+            personalPercentCapForFirstPhase[beneficiary] = tokenPurchaseCap;
+
+            require(token.balanceOf(beneficiary).add(tokens) < personalPercentCapForFirstPhase[beneficiary]);
+        } else if (now <= secondPhaseEnds) {
+            require(icnq.balanceOf(beneficiary) != 0);
+        }
     }
 
     /**
