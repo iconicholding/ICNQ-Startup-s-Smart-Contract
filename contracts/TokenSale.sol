@@ -25,7 +25,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
 
     // external contracts
     Whitelist public whitelist;
-    MintableToken public icnq;
+    ERC20Basic public icnq;
 
     event TokenRateChanged(uint256 previousRate, uint256 newRate);
 
@@ -66,7 +66,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
 
         token = createTokenContract(_incubatorCompanyToken);
         whitelist = Whitelist(_whitelist);
-        icnq = MintableToken(_icnqToken);
+        icnq = ERC20Basic(_icnqToken);
 
         firstPhaseEnds = _firstPhaseEnds;
         secondPhaseEnds = _secondPhaseEnds;
@@ -155,7 +155,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
      */
     function checkIcnqHold(address beneficiary, uint256 tokens) internal {
         if (now > startTime && now <= firstPhaseEnds) {
-            uint256 icnqBalance = MintableToken(icnq).balanceOf(beneficiary);
+            uint256 icnqBalance = icnq.balanceOf(beneficiary);
             uint256 percentageOwnershipAllowance = icnqBalance.mul(100).div(icnq.totalSupply());
 
             uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(percentageOwnershipAllowance);
