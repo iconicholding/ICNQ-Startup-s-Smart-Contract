@@ -4,7 +4,6 @@ import "zeppelin-solidity/contracts/math/SafeMath.sol";
 import "zeppelin-solidity/contracts/ownership/Ownable.sol";
 import "./Crowdsale.sol";
 
-
 /**
  * @title FinalizableCrowdsale
  * @dev Extension of Crowdsale where an owner can do extra work
@@ -20,19 +19,19 @@ contract FinalizableCrowdsale is Crowdsale, Ownable {
   /**
    * @dev Must be called after crowdsale ends, to do some extra finalization
    * work. Calls the contract's finalization function.
+   * @param _newTokenOwner Address of new token owner
    */
-  function finalize(address _newTokenOwner) onlyOwner public {
-    require(!isFinalized && _newTokenOwner != address(0));
-    require(hasEnded());
+   function finalize(address _newTokenOwner) public onlyOwner {
+     require(!isFinalized && _newTokenOwner != address(0));
+     require(hasEnded());
 
-    // change token owner
-    token.transferOwnership(_newTokenOwner);
+     finalization();
+     Finalized();
+     isFinalized = true;
 
-    finalization();
-    Finalized();
-
-    isFinalized = true;
-  }
+     // change token ownership
+     token.transferOwnership(_newTokenOwner);
+   }
 
   /**
    * @dev Can be overridden to add finalization logic. The overriding function
