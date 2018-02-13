@@ -228,8 +228,8 @@ contract('TokenSale', ([owner, wallet, buyer, buyer2, user1]) => {
                 ensuresException(e);
             }
 
-            const advisorBalance = await token.balanceOf(user1);
-            advisorBalance.should.be.bignumber.equal(0);
+            const userBalance = await token.balanceOf(user1);
+            userBalance.should.be.bignumber.equal(0);
 
             // purchase occurrence
             await crowdsale.buyTokens(buyer, { value, from: buyer });
@@ -255,8 +255,8 @@ contract('TokenSale', ([owner, wallet, buyer, buyer2, user1]) => {
                 ensuresException(e);
             }
 
-            const advisorBalance = await token.balanceOf(user1);
-            advisorBalance.should.be.bignumber.equal(0);
+            const userBalance = await token.balanceOf(user1);
+            userBalance.should.be.bignumber.equal(0);
 
             // puchase occurence
             await crowdsale.buyTokens(buyer, { value, from: buyer });
