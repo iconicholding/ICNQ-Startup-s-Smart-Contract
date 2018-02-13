@@ -138,7 +138,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
         forwardFunds();
     }
 
-    // overriding Crowdsale#hasEnded to add cap logic
+    // override Crowdsale#hasEnded to add cap logic
     // @return true if crowdsale event has ended
     function hasEnded() public view returns (bool) {
         if (token.totalSupply() == totalTokensForCrowdsale) {
