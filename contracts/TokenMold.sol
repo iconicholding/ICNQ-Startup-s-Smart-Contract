@@ -1,4 +1,4 @@
-pragma solidity 0.4.19;
+pragma solidity 0.4.23;
 
 import "zeppelin-solidity/contracts/token/ERC20/MintableToken.sol";
 import "zeppelin-solidity/contracts/token/ERC20/PausableToken.sol";
@@ -13,7 +13,7 @@ contract TokenMold is PausableToken, MintableToken {
     string public symbol;
     uint8 public decimals;
 
-    function TokenMold(string _name, string _symbol, uint8 _decimals) public {
+    constructor(string _name, string _symbol, uint8 _decimals) public {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;

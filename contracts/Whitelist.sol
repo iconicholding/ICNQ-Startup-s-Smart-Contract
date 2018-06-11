@@ -1,28 +1,45 @@
-pragma solidity 0.4.19;
+pragma solidity 0.4.23;
 
 import 'zeppelin-solidity/contracts/ownership/Ownable.sol';
 
 
+/**
+ * @title Whitelist - crowdsale whitelist contract
+ * @author Gustavo Guimaraes - <gustavo@starbase.co>
+ */
 contract Whitelist is Ownable {
-    mapping(address => bool) public allowedAddresses;
+    mapping(address => bool) public isWhitelisted;
 
     event WhitelistUpdated(uint256 timestamp, string operation, address indexed member);
 
-    function addToWhitelist(address[] _addresses) public onlyOwner {
+    /**
+    * @dev Adds single address to whitelist.
+    * @param _address Address to be added to the whitelist
+    */
+    function addToWhitelist(address _address) external onlyOwner {
+        isWhitelisted[_address] = true;
+        emit WhitelistUpdated(now, "Added", _address);
+    }
+
+    /**
+     * @dev add various whitelist addresses
+     * @param _addresses Array of ethereum addresses
+     */
+    function addManyToWhitelist(address[] _addresses) external onlyOwner {
         for (uint256 i = 0; i < _addresses.length; i++) {
-            allowedAddresses[_addresses[i]] = true;
-            WhitelistUpdated(now, "Added", _addresses[i]);
+            isWhitelisted[_addresses[i]] = true;
+            emit WhitelistUpdated(now, "Added", _addresses[i]);
         }
     }
 
+    /**
+     * @dev remove whitelist addresses
+     * @param _addresses Array of ethereum addresses
+     */
     function removeFromWhitelist(address[] _addresses) public onlyOwner {
         for (uint256 i = 0; i < _addresses.length; i++) {
-            allowedAddresses[_addresses[i]] = false;
-            WhitelistUpdated(now, "Removed", _addresses[i]);
+            isWhitelisted[_addresses[i]] = false;
+            emit WhitelistUpdated(now, "Removed", _addresses[i]);
         }
-    }
-
-    function isWhitelisted(address _address) public view returns (bool) {
-        return allowedAddresses[_address];
     }
 }

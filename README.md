@@ -2,22 +2,25 @@
 
 ## Table of Contents
 
-* [Table of Contents](#table-of-contents)
-* [Overview](#overview)
-* [Implementation Details](#implementation-details)
-* [Development](#development)
+*   [Table of Contents](#table-of-contents)
+*   [Overview](#overview)
+*   [Implementation Details](#implementation-details)
+*   [Development](#development)
 
 ## Overview
 
 The Iconiq Lab platform's smart contracts permits Iconiq Lab's incubators companies to create their token pre sale events.
 This is primarily done via the ICNQ token. Firstly, it allows exclusive access to the presales (thus, the discounts and bonuses) of all companies which graduate the accelerator program. Only Ethereum addresses that hold the token is permitted to invest into the smart contracts of the companies Iconiq lab develops and promotes.
 
-These presales are structured in 3 phases:
-1- the first phase will be pro-rata based on your % holding of ICNQ (for example, if I hold 5% of ICNQ tokens, I can invest in 5% of the presale).
+These presales are structured in 4 phases:
 
-2- If this does not fulfill the entire presale, then the second phase will allow any ICNQ holder to invest as much as they wish.
+1.  Premium holders of ICNQ tokens (minimum 100,000 tokens) will be allowed to negotiate (with the help of Iconiq) their own terms in the sale - how many tokens to buy at what discount
 
-3- If this goes unfulfilled, then the third phase will allow anybody to invest in the presale.
+2.  The second phase will be pro-rata based on your % holding of ICNQ, for example, if I hold 5% of ICNQ tokens, I can invest in 5% of the presale.
+
+3.  If the first two phases do not sell out the entire presale, this phase will allow any ICNQ holder to invest as much as they wish
+
+4.  the remainder of the tokens are sold to anyone who has been whitelisted
 
 ## Implementation Details
 
@@ -26,41 +29,41 @@ This contract creates a token with customized name, symbol and decimals. Upon it
 For this contract to work with TokenSale.sol, its ownership needs to be passed on to TokenSale contract instance that will manage the token sale.
 
 Whitelist.sol
-It allows the addition and/or removal of addresses to the whitelist registry. Both addition and removal of addresses is done via passing an array of Ethereum addresses to `addToWhitelist` and `removeFromWhitelist` functions within the contract. Only the contract owner has the ability to trigger such actions.
+It allows the addition and/or removal of addresses to the whitelist registry. Both addition and removal of addresses is done via passing an array of Ethereum addresses to `addManyToWhitelist` or`addToWhitelist` and `removeFromWhitelist` functions within the contract. Only the contract owner has the ability to trigger such actions.
 
 TokenSale.sol
 This contract is where the fundraising occurs. For it to work as expected, the ownership from the deployed TokenMold contract needs to be passed on to TokenSale. This is accomplished via the `transferOwnership` function found in the zeppelin-solidity's Ownable.sol contract.
 
-In order for investors to participate in the crowdsale using the TokenSale contract, they need firstly to hold ICNQ token. All in all, there are 3 time events where the token sale occurs via this smart contract. Please see [overview](#overview) for more info.
+In order for investors to participate in the token sale using the TokenSale contract, they need firstly to hold ICNQ token. All in all, there are 3 time events where the token sale occurs via this smart contract. Please see [overview](#overview) for more info.
 
 For a token purchase event to occur, investor must trigger the `BuyTokens` function within the TokenSale contract. Investors receives the purchased tokens right away, however, they will only be able to trade tokens once token transfers are unpaused. This is done by the token owner and should be most likely be done after the presale finishes or per incubators company decision.
 
-In case there is a remainder amount of ETH left in the TokenSale contract (this may happen if the last purchaser participating in the crowdsale sends more ether than needed to finish the purchase of all left over tokens), then the remainder amount will be recorded on the public variable `remainderAmount`. This amount must be sent back to last purchaser. The last purchaser address is saved in the contract in the variable `remainderPurchaser`.
+Once the contract is finalized the token ownership is returned to the company token owner who had token ownership at the moment the token sale contract was deployed.
 
 ## Development
 
 **Dependencies**
 
-* `node@8.5.x`
-* `truffle@^4.0.x`
-* `ganache-cli@^6.0.x`
-* `zeppelin-solidity@1.6.X`
+*   `node@8.5.x`
+*   `truffle@^4.0.x`
+*   `ganache-cli@^6.0.x`
+*   `zeppelin-solidity@1.6.X`
 
 ## Setting Up
 
-* Clone this repository.
+*   Clone this repository.
 
-* Install all [system dependencies](#development).
+*   Install all [system dependencies](#development).
 
-  * `cd truffle && npm install`
+    *   `cd truffle && npm install`
 
-* Compile contract code
+*   Compile contract code
 
-  * `node_modules/.bin/truffle compile`
+    *   `node_modules/.bin/truffle compile`
 
 ## Running Tests
 
-* `bash run_test.sh`
+*   `bash run_test.sh`
 
 ## License and Warranty
 

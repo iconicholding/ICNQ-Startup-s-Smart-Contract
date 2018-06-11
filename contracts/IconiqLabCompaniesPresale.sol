@@ -1,8 +1,9 @@
-pragma solidity 0.4.19;
+pragma solidity 0.4.23;
 
 import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
-import "./custom-zeppelin-solidity/FinalizableCrowdsale.sol";
-import "./TokenMold.sol";
+import "zeppelin-solidity/contracts/token/ERC20/MintableToken.sol";
+import "zeppelin-solidity/contracts/token/ERC20/PausableToken.sol";
+import "zeppelin-solidity/contracts/crowdsale/FinalizableCrowdsale.sol";
 import "./Whitelist.sol";
 
 /**
@@ -10,41 +11,43 @@ import "./Whitelist.sol";
  * @author Gustavo Guimaraes - <gustavoguimaraes@gmail.com>
  */
 
-contract TokenSale is FinalizableCrowdsale, Pausable {
+contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
     uint256 public totalTokensForCrowdsale;
 
     uint256 public firstPhaseEnds;
     uint256 public secondPhaseEnds;
+    uint256 public thirdPhaseEnds;
+    address public initialTokenOwner;
 
-    mapping (address => uint256) public personalPercentCapForFirstPhase;
-
-    // remainderPurchaser and remainderTokens info saved in the contract
-    // used for reference for contract owner to send refund if any to last purchaser after end of crowdsale
-    address public remainderPurchaser;
-    uint256 public remainderAmount;
+    mapping (address => uint256) public personalCap;
 
     // external contracts
     Whitelist public whitelist;
     ERC20Basic public icnq;
 
+    event PremiunICNQHolderTokenPurchase(address indexed investor, uint256 tokensPurchased);
     event TokenRateChanged(uint256 previousRate, uint256 newRate);
 
     /**
      * @dev Contract constructor function
      * @param _startTime The timestamp of the beginning of the crowdsale
+     * @param _firstPhaseEnds The timestamp of the end of first phase
+     * @param _secondPhaseEnds The timestamp of the end of second phase
+     * @param _thirdPhaseEnds The timestamp of the end of third phase
+     * @param _startTime The timestamp of the beginning of the crowdsale
      * @param _endTime Timestamp when the crowdsale will finish
      * @param _whitelist contract containing the whitelisted addresses
      * @param _icnqToken ICNQ token contract address
-     * @param _incubatorCompanyToken ERC20 TokenMold contract address
+     * @param _incubatorCompanyToken ERC20 MintableToken contract address
      * @param _rate The token rate per ETH
      * @param _wallet Multisig wallet that will hold the crowdsale funds.
-     * @param _totalTokensForCrowdsale Cap for the token sale
+     * @param _totalTokensForCrowdsale Cap for the token sale in wei format
      */
-    function TokenSale
-        (
+    constructor(
             uint256 _startTime,
             uint256 _firstPhaseEnds,
             uint256 _secondPhaseEnds,
+            uint256 _thirdPhaseEnds,
             uint256 _endTime,
             address _whitelist,
             address _icnqToken,
@@ -56,7 +59,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
         public
         FinalizableCrowdsale()
         Crowdsale(_startTime, _endTime, _rate, _wallet)
-    {
+     {
         require(
                 _whitelist != address(0) &&
                 _icnqToken != address(0) &&
@@ -64,15 +67,18 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
                 _totalTokensForCrowdsale != 0
         );
 
-        token = createTokenContract(_incubatorCompanyToken);
+        token = MintableToken(_incubatorCompanyToken);
         whitelist = Whitelist(_whitelist);
         icnq = ERC20Basic(_icnqToken);
 
         firstPhaseEnds = _firstPhaseEnds;
         secondPhaseEnds = _secondPhaseEnds;
+        thirdPhaseEnds = _thirdPhaseEnds;
+
+        initialTokenOwner = MintableToken(token).owner();
         totalTokensForCrowdsale = _totalTokensForCrowdsale;
 
-        require(TokenMold(token).paused());
+        require(PausableToken(token).paused());
     }
 
     modifier whitelisted(address beneficiary) {
@@ -87,13 +93,29 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
     }
 
     /**
+     * @dev Mint tokens for Premium holders of ICNQ tokens ie possess > 100K
+     * @param investorsAddress Investor's address
+     * @param tokensPurchased Tokens purchased during pre sale
+     */
+    function mintTokenForPremiumICNQHolders(address investorsAddress, uint256 tokensPurchased)
+        external
+        onlyOwner
+    {
+        require(now < startTime && investorsAddress != address(0) && icnq.balanceOf(investorsAddress) > 100000e18);
+        require(token.totalSupply().add(tokensPurchased) <= totalTokensForCrowdsale);
+
+        token.mint(investorsAddress, tokensPurchased);
+        emit PremiunICNQHolderTokenPurchase(investorsAddress, tokensPurchased);
+    }
+
+    /**
      * @dev change crowdsale rate
      * @param newRate Figure that corresponds to the new rate per token
      */
     function setRate(uint256 newRate) external onlyOwner {
         require(newRate != 0);
 
-        TokenRateChanged(rate, newRate);
+        emit TokenRateChanged(rate, newRate);
         rate = newRate;
     }
 
@@ -124,16 +146,16 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
             tokens = totalTokensForCrowdsale.sub(token.totalSupply());
             weiAmount = tokens.div(rate);
 
-            // save info so as to refund purchaser after crowdsale's end
-            remainderPurchaser = msg.sender;
-            remainderAmount = msg.value.sub(weiAmount);
+            // send remainder wei to sender
+            uint256 remainderAmount = msg.value.sub(weiAmount);
+            msg.sender.transfer(remainderAmount);
         }
 
         // update state
         weiRaised = weiRaised.add(weiAmount);
 
         token.mint(beneficiary, tokens);
-        TokenPurchase(msg.sender, beneficiary, weiAmount, tokens);
+        emit TokenPurchase(msg.sender, beneficiary, weiAmount, tokens);
 
         forwardFunds();
     }
@@ -141,7 +163,7 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
     // override Crowdsale#hasEnded to add cap logic
     // @return true if crowdsale event has ended
     function hasEnded() public view returns (bool) {
-        if (token.totalSupply() == totalTokensForCrowdsale) {
+        if (token.totalSupply() >= totalTokensForCrowdsale) {
             return true;
         }
 
@@ -154,37 +176,24 @@ contract TokenSale is FinalizableCrowdsale, Pausable {
      * @param tokens Tokens to receive
      */
     function checkIcnqHold(address beneficiary, uint256 tokens) internal {
-        if (now > startTime && now <= firstPhaseEnds) {
+        if (now > startTime && now <= secondPhaseEnds) {
             uint256 icnqBalance = icnq.balanceOf(beneficiary);
             uint256 percentageOwnershipAllowance = icnqBalance.mul(100).div(icnq.totalSupply());
 
             uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(percentageOwnershipAllowance);
-            personalPercentCapForFirstPhase[beneficiary] = tokenPurchaseCap;
+            personalCap[beneficiary] = tokenPurchaseCap;
 
-            require(token.balanceOf(beneficiary).add(tokens) <= personalPercentCapForFirstPhase[beneficiary]);
-        } else if (now > firstPhaseEnds && now <= secondPhaseEnds) {
+            require(token.balanceOf(beneficiary).add(tokens) <= personalCap[beneficiary]);
+        } else if (now > secondPhaseEnds && now <= thirdPhaseEnds) {
             require(icnq.balanceOf(beneficiary) > 0);
         }
-    }
-
-    /**
-     * @dev Creates token contract. This is called on the constructor function of the Crowdsale contract
-     * @param _token Address of token contract
-     */
-    function createTokenContract(address _token) internal returns (MintableToken) {
-        return TokenMold(_token);
     }
 
     /**
      * @dev Override function that finalizes crowdsale
      */
     function finalization() internal {
-        if (totalTokensForCrowdsale > token.totalSupply()) {
-            uint256 remainingTokens = totalTokensForCrowdsale.sub(token.totalSupply());
-
-            token.mint(wallet, remainingTokens);
-        }
-
+        token.transferOwnership(initialTokenOwner);
         super.finalization();
     }
 }
