@@ -63,7 +63,7 @@ Once the contract is finalized the token ownership is returned to the company to
 
 ## Running Tests
 
-*   `bash run_test.sh`
+*   `npm test`
 
 ## License and Warranty
 

@@ -18,17 +18,18 @@ contract(
         const newRate = new BigNumber(20);
 
         const dayInSecs = 86400;
-        const value = new BigNumber(1);
+        const value = new BigNumber(1e18);
 
         const totalTokensForCrowdsale = new BigNumber(20000000e18);
 
-        let startTime, firstPhaseEnds, secondPhaseEnds, endTime;
+        let startTime, firstPhaseEnds, secondPhaseEnds, thirdPhaseEnds, endTime;
         let crowdsale, token, icnq, whitelist;
 
         const newCrowdsale = rate => {
             startTime = getBlockNow() + 2; // crowdsale starts in 2 seconds
-            firstPhaseEnds = startTime + dayInSecs * 30; // 30 days
-            secondPhaseEnds = startTime + dayInSecs * 50; // 50 days
+            firstPhaseEnds = startTime + dayInSecs * 10; // 10 days
+            secondPhaseEnds = startTime + dayInSecs * 30; // 30 days
+            thirdPhaseEnds = startTime + dayInSecs * 50; // 50 days
             endTime = startTime + dayInSecs * 70; // 70 days
 
             return Whitelist.new()
@@ -46,6 +47,7 @@ contract(
                         startTime,
                         firstPhaseEnds,
                         secondPhaseEnds,
+                        thirdPhaseEnds,
                         endTime,
                         whitelist.address,
                         icnq.address,
@@ -86,7 +88,7 @@ contract(
             walletAddress.should.equal(wallet);
         });
 
-        it('has a totalTokensForCrowdsale variable', async () => {
+        it('has a totalTokensForCrowdsale', async () => {
             const totalTokensForCrowdsaleFigure = await crowdsale.totalTokensForCrowdsale();
             totalTokensForCrowdsaleFigure.should.be.bignumber.equal(
                 totalTokensForCrowdsale
@@ -96,6 +98,100 @@ contract(
         it('starts with token paused', async () => {
             const paused = await token.paused();
             paused.should.be.true;
+        });
+
+        describe('#mintTokenForPremiumICNQHolders', function() {
+            beforeEach(async () => {
+                const premiumHolderThreshhold = 100000e18;
+                await whitelist.addManyToWhitelist([buyer, buyer2]);
+                await token.transferOwnership(crowdsale.address);
+                await icnq.mint(buyer, premiumHolderThreshhold);
+            });
+
+            it('must NOT be called by a non owner', async () => {
+                try {
+                    await crowdsale.mintTokenForPremiumICNQHolders(
+                        buyer,
+                        10e18,
+                        {
+                            from: buyer
+                        }
+                    );
+                    assert.fail();
+                } catch (e) {
+                    ensuresException(e);
+                }
+
+                const buyerBalance = await token.balanceOf(buyer);
+                buyerBalance.should.be.bignumber.equal(0);
+            });
+
+            it('must NOT allow non premium holders to participate', async () => {
+                try {
+                    await crowdsale.mintTokenForPremiumICNQHolders(
+                        buyer2,
+                        10e18,
+                        {
+                            from: owner
+                        }
+                    );
+                    assert.fail();
+                } catch (e) {
+                    ensuresException(e);
+                }
+
+                const buyer2Balance = await token.balanceOf(buyer2);
+                buyer2Balance.should.be.bignumber.equal(0);
+            });
+
+            it('should NOT mint tokens when premiun holders cap is reached', async () => {
+                const preCrowdsaleCap = await crowdsale.totalTokensForCrowdsale();
+
+                try {
+                    await crowdsale.mintTokenForPremiumICNQHolders(
+                        buyer,
+                        preCrowdsaleCap.toNumber() + 10e18
+                    );
+                    assert.fail();
+                } catch (e) {
+                    ensuresException(e);
+                }
+
+                const buyerBalance = await token.balanceOf(buyer);
+                buyerBalance.should.be.bignumber.equal(0);
+            });
+
+            it('should NOT mint tokens for premiun holders after first phase of token sale ends', async () => {
+                await timer(dayInSecs * 50);
+
+                try {
+                    await crowdsale.mintTokenForPremiumICNQHolders(
+                        buyer,
+                        value
+                    );
+                    assert.fail();
+                } catch (e) {
+                    ensuresException(e);
+                }
+
+                const buyerBalance = await token.balanceOf(buyer);
+                buyerBalance.should.be.bignumber.equal(0);
+            });
+
+            it('mints tokens to premiun holders before the crowdsale starts', async () => {
+                const { logs } = await crowdsale.mintTokenForPremiumICNQHolders(
+                    buyer,
+                    value
+                );
+
+                const buyerBalance = await token.balanceOf(buyer);
+                buyerBalance.should.be.bignumber.equal(value);
+
+                const event = logs.find(
+                    e => e.event === 'PremiunICNQHolderTokenPurchase'
+                );
+                should.exist(event);
+            });
         });
 
         describe('changing rate', () => {
@@ -143,7 +239,7 @@ contract(
                 await timer(dayInSecs);
 
                 try {
-                    await whitelist.addToWhitelist([buyer, buyer2], {
+                    await whitelist.addManyToWhitelist([buyer, buyer2], {
                         from: buyer
                     });
                     assert.fail();
@@ -156,7 +252,7 @@ contract(
                 );
                 isBuyerWhitelisted.should.be.false;
 
-                await whitelist.addToWhitelist([buyer, buyer2], {
+                await whitelist.addManyToWhitelist([buyer, buyer2], {
                     from: owner
                 });
 
@@ -166,7 +262,7 @@ contract(
 
             it('only allows owner to remove from the whitelist', async () => {
                 await timer(dayInSecs);
-                await whitelist.addToWhitelist([buyer, buyer2], {
+                await whitelist.addManyToWhitelist([buyer, buyer2], {
                     from: owner
                 });
 
@@ -192,7 +288,7 @@ contract(
 
             it('shows whitelist addresses', async () => {
                 await timer(dayInSecs);
-                await whitelist.addToWhitelist([buyer, buyer2], {
+                await whitelist.addManyToWhitelist([buyer, buyer2], {
                     from: owner
                 });
 
@@ -209,7 +305,7 @@ contract(
 
             it('has WhitelistUpdated event', async () => {
                 await timer(dayInSecs);
-                const { logs } = await whitelist.addToWhitelist(
+                const { logs } = await whitelist.addManyToWhitelist(
                     [buyer, buyer2],
                     {
                         from: owner
@@ -223,7 +319,7 @@ contract(
 
         describe('token purchases', () => {
             beforeEach('initialize contract', async () => {
-                await whitelist.addToWhitelist([buyer, buyer2]);
+                await whitelist.addManyToWhitelist([buyer, buyer2]);
                 await token.transferOwnership(crowdsale.address);
                 await icnq.mint(buyer, 10e18);
                 await icnq.mint(buyer2, 10e18);
@@ -246,7 +342,7 @@ contract(
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
 
                 const buyerBalance = await token.balanceOf(buyer);
-                buyerBalance.should.be.bignumber.equal(10);
+                buyerBalance.should.be.bignumber.equal(10e18);
             });
 
             it('allows ONLY addresses that call buyTokens to purchase tokens', async () => {
@@ -273,7 +369,7 @@ contract(
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
 
                 const buyerBalance = await token.balanceOf(buyer);
-                buyerBalance.should.be.bignumber.equal(10);
+                buyerBalance.should.be.bignumber.equal(10e18);
             });
 
             it('does NOT buy tokens when crowdsale is paused', async () => {
@@ -295,26 +391,23 @@ contract(
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
 
                 buyerBalance = await token.balanceOf(buyer);
-                buyerBalance.should.be.bignumber.equal(10);
+                buyerBalance.should.be.bignumber.equal(10e18);
             });
 
-            it('only mints tokens up to crowdsale cap and when more eth is sent last user purchase info is saved in contract', async () => {
-                crowdsale = await newCrowdsale(totalTokensForCrowdsale);
-                await whitelist.addToWhitelist([buyer]);
+            it('only mints tokens up to crowdsale cap', async () => {
+                crowdsale = await newCrowdsale(20000000);
+                await whitelist.addManyToWhitelist([buyer]);
                 await token.transferOwnership(crowdsale.address);
 
                 await timer(dayInSecs * 64);
 
-                await crowdsale.buyTokens(buyer, { from: buyer, value: 2 });
+                await crowdsale.buyTokens(buyer, {
+                    from: buyer,
+                    value
+                });
 
                 const buyerBalance = await token.balanceOf(buyer);
                 buyerBalance.should.be.bignumber.equal(totalTokensForCrowdsale);
-
-                const remainderPurchaser = await crowdsale.remainderPurchaser();
-                remainderPurchaser.should.equal(buyer);
-
-                const remainder = await crowdsale.remainderAmount();
-                remainder.should.be.bignumber.equal(1);
 
                 try {
                     await crowdsale.buyTokens(buyer, { value, from: buyer });
@@ -329,7 +422,7 @@ contract(
 
             it('does NOT allow purchase when token ownership does not currently belong to crowdsale contract', async () => {
                 crowdsale = await newCrowdsale(rate);
-                await whitelist.addToWhitelist([buyer]);
+                await whitelist.addManyToWhitelist([buyer]);
 
                 timer(dayInSecs * 64);
 
@@ -349,7 +442,7 @@ contract(
 
             it('does not allow purchase when buyer goes over personal crowdsale cap during the first crowdsale phase', async () => {
                 crowdsale = await newCrowdsale(10000000e18);
-                await whitelist.addToWhitelist([buyer]);
+                await whitelist.addManyToWhitelist([buyer]);
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 10e18);
@@ -371,9 +464,9 @@ contract(
                 buyerBalance.should.be.bignumber.equal(0);
             });
 
-            it('accepts when it is within beneficiary cap for the first phase', async () => {
-                crowdsale = await newCrowdsale(10000000e18);
-                await whitelist.addToWhitelist([buyer, buyer2]);
+            it('accepts purchase when it is within beneficiary cap during the second phase', async () => {
+                crowdsale = await newCrowdsale(10000000);
+                await whitelist.addManyToWhitelist([buyer, buyer2]);
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 10e18);
@@ -391,9 +484,9 @@ contract(
                 buyer2Balance.should.be.bignumber.equal(10000000e18);
             });
 
-            it('allows purchases only for icnq holders during secondPhaseEnds', async () => {
+            it('allows purchases only for icnq holders during third phase', async () => {
                 await timer(dayInSecs * 32);
-                await whitelist.addToWhitelist([user1]);
+                await whitelist.addManyToWhitelist([user1]);
 
                 try {
                     await crowdsale.buyTokens(user1, {
@@ -414,13 +507,13 @@ contract(
                 });
 
                 const buyerBalance = await token.balanceOf(buyer);
-                buyerBalance.should.be.bignumber.equal(10);
+                buyerBalance.should.be.bignumber.equal(10e18);
             });
 
-            it('allows purchases normally after secondPhaseEnds', async () => {
+            it('allows purchases normally after third phase ends', async () => {
                 await timer(dayInSecs * 68);
 
-                await whitelist.addToWhitelist([user1]);
+                await whitelist.addManyToWhitelist([user1]);
 
                 await crowdsale.buyTokens(user1, {
                     value,
@@ -428,13 +521,13 @@ contract(
                 });
 
                 const user1Balance = await token.balanceOf(user1);
-                user1Balance.should.be.bignumber.equal(10);
+                user1Balance.should.be.bignumber.equal(10e18);
             });
         });
 
         describe('crowdsale finalization', function() {
             beforeEach(async () => {
-                await whitelist.addToWhitelist([buyer]);
+                await whitelist.addManyToWhitelist([buyer]);
 
                 await token.transferOwnership(crowdsale.address);
 
@@ -442,7 +535,7 @@ contract(
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
                 await timer(dayInSecs * 20);
 
-                await crowdsale.finalize(owner);
+                await crowdsale.finalize();
             });
 
             it('shows that crowdsale is finalized', async function() {
@@ -453,15 +546,6 @@ contract(
             it('returns token ownership to original owner', async function() {
                 const tokenOwner = await token.owner();
                 tokenOwner.should.be.equal(owner);
-            });
-
-            it('mints remaining crowdsale tokens to wallet', async function() {
-                const buyerBalance = await token.balanceOf(buyer);
-
-                const walletTokenBalance = await token.balanceOf(wallet);
-                walletTokenBalance.should.be.bignumber.equal(
-                    totalTokensForCrowdsale.sub(buyerBalance)
-                );
             });
         });
     }

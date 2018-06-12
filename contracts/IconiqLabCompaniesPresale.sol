@@ -93,15 +93,17 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
     }
 
     /**
-     * @dev Mint tokens for Premium holders of ICNQ tokens ie possess > 100K
+     * @dev Mint tokens for Premium holders of ICNQ tokens ie possesses > 100K
      * @param investorsAddress Investor's address
      * @param tokensPurchased Tokens purchased during pre sale
      */
     function mintTokenForPremiumICNQHolders(address investorsAddress, uint256 tokensPurchased)
         external
         onlyOwner
+        whitelisted(investorsAddress)
+        crowdsaleIsTokenOwner
     {
-        require(now < startTime && investorsAddress != address(0) && icnq.balanceOf(investorsAddress) > 100000e18);
+        require(now < firstPhaseEnds && investorsAddress != address(0) && icnq.balanceOf(investorsAddress) >= 100000e18);
         require(token.totalSupply().add(tokensPurchased) <= totalTokensForCrowdsale);
 
         token.mint(investorsAddress, tokensPurchased);
@@ -176,7 +178,7 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
      * @param tokens Tokens to receive
      */
     function checkIcnqHold(address beneficiary, uint256 tokens) internal {
-        if (now > startTime && now <= secondPhaseEnds) {
+        if (now > firstPhaseEnds && now <= secondPhaseEnds) {
             uint256 icnqBalance = icnq.balanceOf(beneficiary);
             uint256 percentageOwnershipAllowance = icnqBalance.mul(100).div(icnq.totalSupply());
 
