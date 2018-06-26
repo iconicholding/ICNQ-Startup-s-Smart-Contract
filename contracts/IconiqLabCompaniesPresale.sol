@@ -180,9 +180,9 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
     function checkIcnqHold(address beneficiary, uint256 tokens) internal {
         if (now > firstPhaseEnds && now <= secondPhaseEnds) {
             uint256 icnqBalance = icnq.balanceOf(beneficiary);
-            uint256 percentageOwnershipAllowance = icnqBalance.mul(100).div(icnq.totalSupply());
+            uint256 totalICNQSupply = icnq.totalSupply();
 
-            uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(percentageOwnershipAllowance);
+            uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(icnqBalance).div(totalICNQSupply);
             personalCap[beneficiary] = tokenPurchaseCap;
 
             require(token.balanceOf(beneficiary).add(tokens) <= personalCap[beneficiary]);
