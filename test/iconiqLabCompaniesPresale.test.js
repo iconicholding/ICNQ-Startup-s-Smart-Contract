@@ -440,7 +440,7 @@ contract(
                 buyerBalance.should.be.bignumber.equal(0);
             });
 
-            it('does not allow purchase when buyer goes over personal crowdsale cap during the first crowdsale phase', async () => {
+            it('does not allow purchase when buyer goes over personal crowdsale cap during the second crowdsale phase', async () => {
                 crowdsale = await newCrowdsale(10000000e18);
                 await whitelist.addManyToWhitelist([buyer]);
                 await token.transferOwnership(crowdsale.address);
@@ -477,11 +477,83 @@ contract(
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
                 await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
 
+                try {
+                    await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
+                    assert.fail(); // it cannot buy more than totalTokensForCrowdsale
+                } catch (error) {
+                    ensuresException(error);
+                }
+
                 const buyerBalance = await token.balanceOf(buyer);
                 const buyer2Balance = await token.balanceOf(buyer2);
 
-                buyerBalance.should.be.bignumber.equal(10000000e18);
-                buyer2Balance.should.be.bignumber.equal(10000000e18);
+                buyerBalance.should.be.bignumber.equal(
+                    totalTokensForCrowdsale.div(2)
+                ); // each receive 50% of all tokens
+                buyer2Balance.should.be.bignumber.equal(
+                    totalTokensForCrowdsale.div(2)
+                ); // each receive 50% of all tokens
+            });
+
+            it('accepts purchase for percentage cap during the second phase', async () => {
+                const onePercentOfTokenTotalSupply = totalTokensForCrowdsale.div(
+                    100e18
+                );
+
+                crowdsale = await newCrowdsale(onePercentOfTokenTotalSupply);
+                await whitelist.addManyToWhitelist([buyer, buyer2]);
+                await token.transferOwnership(crowdsale.address);
+
+                await icnq.mint(buyer, 99e18);
+                await icnq.mint(buyer2, 1e18); // possesses 1% of icnq tokens
+
+                await timer(dayInSecs * 19);
+
+                await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
+
+                try {
+                    await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
+                    assert.fail(); // it cannot buy more than 1% personal cap
+                } catch (error) {
+                    ensuresException(error);
+                }
+
+                const buyer2Balance = await token.balanceOf(buyer2);
+
+                buyer2Balance.should.be.bignumber.equal(
+                    onePercentOfTokenTotalSupply.mul(1e18)
+                );
+            });
+
+            it('accepts purchase for less than 1 percent personal cap during the second phase', async () => {
+                const halfPercentOfTokenTotalSupply = totalTokensForCrowdsale
+                    .div(2)
+                    .div(100e18);
+
+                console.log({ halfPercentOfTokenTotalSupply });
+                crowdsale = await newCrowdsale(halfPercentOfTokenTotalSupply);
+                await whitelist.addManyToWhitelist([buyer, buyer2]);
+                await token.transferOwnership(crowdsale.address);
+
+                await icnq.mint(buyer, 99e18 + 1e18 / 2);
+                await icnq.mint(buyer2, 1e18 / 2); // possesses 0.5% of icnq tokens
+
+                await timer(dayInSecs * 19);
+
+                await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
+
+                try {
+                    await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
+                    assert.fail(); // it cannot buy more than 0.5% personal cap
+                } catch (error) {
+                    ensuresException(error);
+                }
+
+                const buyer2Balance = await token.balanceOf(buyer2);
+
+                buyer2Balance.should.be.bignumber.equal(
+                    halfPercentOfTokenTotalSupply.mul(1e18)
+                );
             });
 
             it('allows purchases only for icnq holders during third phase', async () => {
