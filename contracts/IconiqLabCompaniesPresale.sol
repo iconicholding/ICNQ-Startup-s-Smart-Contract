@@ -5,6 +5,7 @@ import "zeppelin-solidity/contracts/token/ERC20/MintableToken.sol";
 import "zeppelin-solidity/contracts/token/ERC20/PausableToken.sol";
 import "zeppelin-solidity/contracts/crowdsale/FinalizableCrowdsale.sol";
 import "./Whitelist.sol";
+import "./ICNQStakingInterface.sol";
 
 /**
  * @title Token Sale contract - crowdsale of company tokens.
@@ -24,6 +25,7 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
     // external contracts
     Whitelist public whitelist;
     ERC20Basic public icnq;
+    ICNQStakingInterface public staking;
 
     event PremiunICNQHolderTokenPurchase(address indexed investor, uint256 tokensPurchased);
     event TokenRateChanged(uint256 previousRate, uint256 newRate);
@@ -39,6 +41,7 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
      * @param _whitelist contract containing the whitelisted addresses
      * @param _icnqToken ICNQ token contract address
      * @param _incubatorCompanyToken ERC20 MintableToken contract address
+     * @param _staking ICNQ staking contract address
      * @param _rate The token rate per ETH
      * @param _wallet Multisig wallet that will hold the crowdsale funds.
      * @param _totalTokensForCrowdsale Cap for the token sale in wei format
@@ -52,6 +55,7 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
             address _whitelist,
             address _icnqToken,
             address _incubatorCompanyToken,
+            address _staking,
             uint256 _rate,
             address _wallet,
             uint256 _totalTokensForCrowdsale
@@ -64,12 +68,14 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
                 _whitelist != address(0) &&
                 _icnqToken != address(0) &&
                 _incubatorCompanyToken != address(0) &&
+                _staking != address(0) &&
                 _totalTokensForCrowdsale != 0
         );
 
         token = MintableToken(_incubatorCompanyToken);
         whitelist = Whitelist(_whitelist);
         icnq = ERC20Basic(_icnqToken);
+        staking = ICNQStakingInterface(_staking);
 
         firstPhaseEnds = _firstPhaseEnds;
         secondPhaseEnds = _secondPhaseEnds;
@@ -103,7 +109,11 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
         whitelisted(investorsAddress)
         crowdsaleIsTokenOwner
     {
-        require(now < firstPhaseEnds && investorsAddress != address(0) && icnq.balanceOf(investorsAddress) >= 100000e18);
+        require(
+            now < firstPhaseEnds &&
+            investorsAddress != address(0) &&
+            staking.totalStakedFor(investorsAddress) >= 100000e18
+        );
         require(token.totalSupply().add(tokensPurchased) <= totalTokensForCrowdsale);
 
         token.mint(investorsAddress, tokensPurchased);
@@ -179,15 +189,15 @@ contract IconiqLabCompaniesPresale is FinalizableCrowdsale, Pausable {
      */
     function checkIcnqHold(address beneficiary, uint256 tokens) internal {
         if (now > firstPhaseEnds && now <= secondPhaseEnds) {
-            uint256 icnqBalance = icnq.balanceOf(beneficiary);
+            uint256 icnqStaked = staking.totalStakedFor(beneficiary);
             uint256 totalICNQSupply = icnq.totalSupply();
 
-            uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(icnqBalance).div(totalICNQSupply);
+            uint256 tokenPurchaseCap = totalTokensForCrowdsale.mul(icnqStaked).div(totalICNQSupply);
             personalCap[beneficiary] = tokenPurchaseCap;
 
             require(token.balanceOf(beneficiary).add(tokens) <= personalCap[beneficiary]);
         } else if (now > secondPhaseEnds && now <= thirdPhaseEnds) {
-            require(icnq.balanceOf(beneficiary) > 0);
+            require(staking.totalStakedFor(beneficiary) > 0);
         }
     }
 

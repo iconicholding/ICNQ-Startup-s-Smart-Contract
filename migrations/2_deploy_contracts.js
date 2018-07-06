@@ -4,6 +4,7 @@ const IconiqLabCompaniesPresale = artifacts.require(
 );
 const StandardToken = artifacts.require('./StandardToken.sol');
 const Whitelist = artifacts.require('./Whitelist.sol');
+const ICNQStaking = artifacts.require('./ICNQStaking.sol');
 
 const name = 'Example Token';
 const symbol = 'ETK';
@@ -26,6 +27,9 @@ module.exports = function(deployer, network, [_, wallet]) {
             return deployer.deploy(StandardToken);
         })
         .then(() => {
+            return deployer.deploy(ICNQStaking, StandardToken.address);
+        })
+        .then(() => {
             return deployer.deploy(TokenMold, name, symbol, decimals);
         })
         .then(() => {
@@ -42,6 +46,7 @@ module.exports = function(deployer, network, [_, wallet]) {
                 Whitelist.address,
                 StandardToken.address,
                 TokenMold.address,
+                ICNQStaking.address,
                 rate,
                 wallet,
                 totalTokensForCrowdsale

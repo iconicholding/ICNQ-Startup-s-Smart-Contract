@@ -5,7 +5,7 @@ contract('TokenMold', () => {
     let token;
 
     beforeEach(async () => {
-        token = await TokenMold.deployed();
+        token = await TokenMold.deployed(); // deployed contract from migration file
     });
 
     it('has a name', async () => {

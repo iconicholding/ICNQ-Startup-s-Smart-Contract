@@ -31,6 +31,9 @@ For this contract to work with TokenSale.sol, its ownership needs to be passed o
 Whitelist.sol
 It allows the addition and/or removal of addresses to the whitelist registry. Both addition and removal of addresses is done via passing an array of Ethereum addresses to `addManyToWhitelist` or`addToWhitelist` and `removeFromWhitelist` functions within the contract. Only the contract owner has the ability to trigger such actions.
 
+ICNQStaking.sol
+It is the contract where icnq holders are able to stake their icnq tokens to take advantage of the ICNQ's companies' pre sale offers. Firstly, users need to `approve` the staking contract to use icnq tokens on their behalf. This is done by calling the `approve` function is the icnq token contract. Then it is able to stake by calling the `stake` function is the icnqStaking contract. For examples of usage please see `tests/icnqStaking.test.js` in the repo.
+
 TokenSale.sol
 This contract is where the fundraising occurs. For it to work as expected, the ownership from the deployed TokenMold contract needs to be passed on to TokenSale. This is accomplished via the `transferOwnership` function found in the zeppelin-solidity's Ownable.sol contract.
 

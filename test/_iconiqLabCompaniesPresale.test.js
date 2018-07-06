@@ -4,10 +4,11 @@ const IconiqLabCompaniesPresale = artifacts.require(
 const TokenMold = artifacts.require('./TokenMold.sol');
 const MintableToken = artifacts.require('./MintableToken.sol');
 const Whitelist = artifacts.require('./Whitelist.sol');
+const ICNQStaking = artifacts.require('./ICNQStaking.sol');
 
 const { should, ensuresException, getBlockNow } = require('./helpers/utils');
 const expect = require('chai').expect;
-const timer = require('./helpers/timer');
+const { latestTime, duration, increaseTimeTo } = require('./helpers/timer');
 
 const BigNumber = web3.BigNumber;
 
@@ -23,10 +24,10 @@ contract(
         const totalTokensForCrowdsale = new BigNumber(20000000e18);
 
         let startTime, firstPhaseEnds, secondPhaseEnds, thirdPhaseEnds, endTime;
-        let crowdsale, token, icnq, whitelist;
+        let crowdsale, token, icnq, whitelist, staking;
 
         const newCrowdsale = rate => {
-            startTime = getBlockNow() + 2; // crowdsale starts in 2 seconds
+            startTime = latestTime() + 2; // crowdsale starts in 2 seconds
             firstPhaseEnds = startTime + dayInSecs * 10; // 10 days
             secondPhaseEnds = startTime + dayInSecs * 30; // 30 days
             thirdPhaseEnds = startTime + dayInSecs * 50; // 50 days
@@ -39,6 +40,10 @@ contract(
                 })
                 .then(mintableToken => {
                     icnq = mintableToken;
+                    return ICNQStaking.new(icnq.address);
+                })
+                .then(icnqStaking => {
+                    staking = icnqStaking;
                     return TokenMold.new('Example Token', 'EXT', 18);
                 })
                 .then(tokenMold => {
@@ -52,6 +57,7 @@ contract(
                         whitelist.address,
                         icnq.address,
                         token.address,
+                        staking.address,
                         rate,
                         wallet,
                         totalTokensForCrowdsale
@@ -106,6 +112,10 @@ contract(
                 await whitelist.addManyToWhitelist([buyer, buyer2]);
                 await token.transferOwnership(crowdsale.address);
                 await icnq.mint(buyer, premiumHolderThreshhold);
+                await icnq.approve(staking.address, premiumHolderThreshhold, {
+                    from: buyer
+                });
+                await staking.stake(premiumHolderThreshhold, { from: buyer });
             });
 
             it('must NOT be called by a non owner', async () => {
@@ -162,7 +172,7 @@ contract(
             });
 
             it('should NOT mint tokens for premiun holders after first phase of token sale ends', async () => {
-                await timer(dayInSecs * 50);
+                await increaseTimeTo(latestTime() + duration.days(50));
 
                 try {
                     await crowdsale.mintTokenForPremiumICNQHolders(
@@ -236,7 +246,7 @@ contract(
 
         describe('whitelist', () => {
             it('only allows owner to add to the whitelist', async () => {
-                await timer(dayInSecs);
+                await increaseTimeTo(latestTime() + duration.days(1));
 
                 try {
                     await whitelist.addManyToWhitelist([buyer, buyer2], {
@@ -261,7 +271,7 @@ contract(
             });
 
             it('only allows owner to remove from the whitelist', async () => {
-                await timer(dayInSecs);
+                await increaseTimeTo(latestTime() + duration.days(1));
                 await whitelist.addManyToWhitelist([buyer, buyer2], {
                     from: owner
                 });
@@ -287,7 +297,7 @@ contract(
             });
 
             it('shows whitelist addresses', async () => {
-                await timer(dayInSecs);
+                await increaseTimeTo(latestTime() + duration.days(1));
                 await whitelist.addManyToWhitelist([buyer, buyer2], {
                     from: owner
                 });
@@ -304,7 +314,7 @@ contract(
             });
 
             it('has WhitelistUpdated event', async () => {
-                await timer(dayInSecs);
+                await increaseTimeTo(latestTime() + duration.days(1));
                 const { logs } = await whitelist.addManyToWhitelist(
                     [buyer, buyer2],
                     {
@@ -322,11 +332,19 @@ contract(
                 await whitelist.addManyToWhitelist([buyer, buyer2]);
                 await token.transferOwnership(crowdsale.address);
                 await icnq.mint(buyer, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer
+                });
+                await staking.stake(10e18, { from: buyer });
                 await icnq.mint(buyer2, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer2
+                });
+                await staking.stake(10e18, { from: buyer2 });
             });
 
             it('allows ONLY whitelisted addresses to purchase tokens', async () => {
-                await timer(dayInSecs * 52);
+                await increaseTimeTo(latestTime() + duration.days(52));
 
                 try {
                     await crowdsale.buyTokens(user1, { from: user1 });
@@ -346,7 +364,7 @@ contract(
             });
 
             it('allows ONLY addresses that call buyTokens to purchase tokens', async () => {
-                await timer(dayInSecs * 52);
+                await increaseTimeTo(latestTime() + duration.days(52));
 
                 try {
                     await crowdsale.buyTokens(buyer, { from: owner });
@@ -373,7 +391,7 @@ contract(
             });
 
             it('does NOT buy tokens when crowdsale is paused', async () => {
-                await timer(dayInSecs * 52);
+                await increaseTimeTo(latestTime() + duration.days(52));
                 await crowdsale.pause();
                 let buyerBalance;
 
@@ -399,7 +417,7 @@ contract(
                 await whitelist.addManyToWhitelist([buyer]);
                 await token.transferOwnership(crowdsale.address);
 
-                await timer(dayInSecs * 64);
+                await increaseTimeTo(latestTime() + duration.days(64));
 
                 await crowdsale.buyTokens(buyer, {
                     from: buyer,
@@ -424,7 +442,7 @@ contract(
                 crowdsale = await newCrowdsale(rate);
                 await whitelist.addManyToWhitelist([buyer]);
 
-                timer(dayInSecs * 64);
+                increaseTimeTo(latestTime() + duration.days(64));
 
                 try {
                     await crowdsale.buyTokens(buyer, {
@@ -446,9 +464,17 @@ contract(
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer
+                });
+                await staking.stake(10e18, { from: buyer });
                 await icnq.mint(buyer2, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer2
+                });
+                await staking.stake(10e18, { from: buyer2 });
 
-                timer(dayInSecs * 22);
+                increaseTimeTo(latestTime() + duration.days(22));
 
                 try {
                     await crowdsale.buyTokens(buyer, {
@@ -470,9 +496,17 @@ contract(
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer
+                });
+                await staking.stake(10e18, { from: buyer });
                 await icnq.mint(buyer2, 10e18);
+                await icnq.approve(staking.address, 10e18, {
+                    from: buyer2
+                });
+                await staking.stake(10e18, { from: buyer2 });
 
-                await timer(dayInSecs * 19);
+                await increaseTimeTo(latestTime() + duration.days(19));
 
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
                 await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
@@ -505,9 +539,17 @@ contract(
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 99e18);
+                await icnq.approve(staking.address, 99e18, {
+                    from: buyer
+                });
+                await staking.stake(99e18, { from: buyer });
                 await icnq.mint(buyer2, 1e18); // possesses 1% of icnq tokens
+                await icnq.approve(staking.address, 1e18, {
+                    from: buyer2
+                });
+                await staking.stake(1e18, { from: buyer2 });
 
-                await timer(dayInSecs * 19);
+                await increaseTimeTo(latestTime() + duration.days(19));
 
                 await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
 
@@ -530,15 +572,22 @@ contract(
                     .div(2)
                     .div(100e18);
 
-                console.log({ halfPercentOfTokenTotalSupply });
                 crowdsale = await newCrowdsale(halfPercentOfTokenTotalSupply);
                 await whitelist.addManyToWhitelist([buyer, buyer2]);
                 await token.transferOwnership(crowdsale.address);
 
                 await icnq.mint(buyer, 99e18 + 1e18 / 2);
+                await icnq.approve(staking.address, 99e18 + 1e18 / 2, {
+                    from: buyer
+                });
+                await staking.stake(99e18 + 1e18 / 2, { from: buyer });
                 await icnq.mint(buyer2, 1e18 / 2); // possesses 0.5% of icnq tokens
+                await icnq.approve(staking.address, 1e18 / 2, {
+                    from: buyer2
+                });
+                await staking.stake(1e18 / 2, { from: buyer2 });
 
-                await timer(dayInSecs * 19);
+                await increaseTimeTo(latestTime() + duration.days(19));
 
                 await crowdsale.buyTokens(buyer2, { value, from: buyer2 });
 
@@ -557,7 +606,7 @@ contract(
             });
 
             it('allows purchases only for icnq holders during third phase', async () => {
-                await timer(dayInSecs * 32);
+                await increaseTimeTo(latestTime() + duration.days(32));
                 await whitelist.addManyToWhitelist([user1]);
 
                 try {
@@ -583,7 +632,7 @@ contract(
             });
 
             it('allows purchases normally after third phase ends', async () => {
-                await timer(dayInSecs * 68);
+                await increaseTimeTo(latestTime() + duration.days(68));
 
                 await whitelist.addManyToWhitelist([user1]);
 
@@ -603,9 +652,9 @@ contract(
 
                 await token.transferOwnership(crowdsale.address);
 
-                await timer(dayInSecs * 62);
+                await increaseTimeTo(latestTime() + duration.days(62));
                 await crowdsale.buyTokens(buyer, { value, from: buyer });
-                await timer(dayInSecs * 20);
+                await increaseTimeTo(latestTime() + duration.days(20));
 
                 await crowdsale.finalize();
             });
